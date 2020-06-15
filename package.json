@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "twitch": "^4.0.10",
+    "twitch-chat-client": "^4.0.10"
+  }
+}
