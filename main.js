@@ -1,7 +1,11 @@
 const config = require('./config.json');
+const express = require('express');
 const ChatClient = require('twitch-chat-client').default;
 const TwitchClient = require('twitch').default;
 
+const app = express();
+const http = require('http').createServer(app);
+const io = require('socket.io')(http);
 const client = TwitchClient.withCredentials(config.clientId, config.oauthToken);
 const chatbot = ChatClient.forTwitchClient(client);
 let channelData = new Map();
@@ -20,7 +24,7 @@ chatbot.connect().then(() => {
             let channel = channelRaw.replace('#', '');
             let counter = channelData.get(channel).counter;
             let lastMilestone = channelData.get(channel).lastMilestone;
-            let regex = /owo|uwu|OwO|UwU/g;
+            let regex = /[UuOo][Ww][UuOo]/g;
             let match, matches = [];
             if (user !== 'codathebot') {
                 if (message.startsWith('!owo') || message.startsWith('!uwu')) {
@@ -31,6 +35,7 @@ chatbot.connect().then(() => {
                     }
                     if (matches.length > 0) {
                         counter += matches.length;
+                        io.emit('counter', counter);
                         let refreshedData = {
                             counter: counter,
                             lastMilestone: lastMilestone
@@ -55,6 +60,17 @@ chatbot.connect().then(() => {
                 }
             }
         });
-        chatbot.say(channel, 'Hewwo! OwO/UwU counter is now active! Summon me with !owo or !uwu.');
+        app.get('/' + channel, function(req, res) {
+            res.sendFile(__dirname + '/public/index.html');
+        });
+        io.on('connection', (socket => {
+            console.log('a user connected');
+        }))
+        //chatbot.say(channel, 'Hewwo! OwO/UwU counter is now active! Summon me with !owo or !uwu.');
     });
 });
+
+app.use(express.static('public/'));
+
+http.listen(8080);
+
