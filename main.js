@@ -35,15 +35,10 @@ prefix.apply(log, {
 
 async function main() {
     chatbot.onJoin((channelRaw) => {
-        let channel = channelRaw.replace('#', '');
         log.info('Joined channel ' + channelRaw);
-        channelData.set(channel, {
-            counter: 0,
-            lastMilestone: 0
-        });
     });
     chatbot.onPrivmsg((channelRaw, user, message) => {
-        let channel = channelRaw.replace('#', '');
+        let channel = channelRaw.substr(1);
         let counter = channelData.get(channel).counter;
         let lastMilestone = channelData.get(channel).lastMilestone;
         let regex = /[UuOo][Ww][UuOo]/g;
@@ -57,7 +52,8 @@ async function main() {
                 }
                 if (matches.length > 0) {
                     counter += matches.length;
-                    io.emit('counter', counter);
+                    log.debug(`${chalk.italic(`${chalk.gray(`(${channelRaw})`)}`)} Message from ${user} contains ${matches.length} OwOs. New count: ${counter}`);
+                    io.emit('counter-' + channel, counter);
                     let refreshedData = {
                         counter: counter,
                         lastMilestone: lastMilestone
@@ -67,7 +63,7 @@ async function main() {
                 let responseMilestone = 0;
 
                 config.milestones.forEach(milestone => {
-                    if (counter > milestone && counter > lastMilestone) {
+                    if (counter >= milestone && counter > lastMilestone) {
                         responseMilestone = milestone;
                     }
                 });
@@ -77,25 +73,31 @@ async function main() {
                         lastMilestone: responseMilestone
                     }
                     channelData.set(channel, refreshedData);
+                    io.emit('milestone-' + channel, responseMilestone, counter);
                     chatbot.say(channel, 'We have reached ' + responseMilestone + ' OwOs!');
                 }
             }
         }
     });
     await chatbot.connect();
+}
+
+main().then(() => {
+    io.emit('refresh');
     config.channels.forEach(channel => {
+        channelData.set(channel, {
+            counter: 0,
+            lastMilestone: 0
+        });
         app.get('/' + channel, function (req, res) {
             res.sendFile(__dirname + '/public/index.html');
         });
         io.on('connection', (socket => {
-            socket.emit('counter', channelData.get(channel).counter);
-            console.log('a user connected');
-        }))
+            socket.emit('counter-' + channel, channelData.get(channel).counter);
+        }));
         //chatbot.say(channel, 'Hewwo! OwO/UwU counter is now active! Summon me with !owo or !uwu.');
     });
-}
-
-main();
+});
 
 app.use(express.static('public/'));
 
