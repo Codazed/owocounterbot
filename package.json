@@ -1,6 +1,9 @@
 {
   "dependencies": {
+    "chalk": "^4.1.0",
     "express": "^4.17.1",
+    "loglevel": "^1.6.8",
+    "loglevel-plugin-prefix": "^0.8.4",
     "socket.io": "^2.3.0",
     "twitch": "^4.0.10",
     "twitch-chat-client": "^4.0.10"
