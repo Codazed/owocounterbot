@@ -64,6 +64,7 @@ chatbot.connect().then(() => {
             res.sendFile(__dirname + '/public/index.html');
         });
         io.on('connection', (socket => {
+            socket.emit('counter', channelData.get(channel).counter);
             console.log('a user connected');
         }))
         //chatbot.say(channel, 'Hewwo! OwO/UwU counter is now active! Summon me with !owo or !uwu.');
