@@ -1,12 +1,16 @@
 const config = require('./config.json');
 const express = require('express');
+const Database = require('better-sqlite3');
 const chalk = require('chalk');
 const log = require('loglevel');
 const prefix = require('loglevel-plugin-prefix');
-const { ChatBadgeVersion } = require('twitch');
+const {
+    stat
+} = require('fs');
 const ChatClient = require('twitch-chat-client').default;
 const TwitchClient = require('twitch').default;
 
+const db = new Database('data.db');
 const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
@@ -39,42 +43,48 @@ async function main() {
     });
     chatbot.onPrivmsg((channelRaw, user, message) => {
         let channel = channelRaw.substr(1);
-        let counter = channelData.get(channel).counter;
-        let lastMilestone = channelData.get(channel).lastMilestone;
+        let data = channelData.get(channel);
         let regex = /[UuOo][Ww][UuOo]/g;
         let match, matches = [];
         if (user !== chatbot.currentNick) {
             if (message.startsWith('!owo') || message.startsWith('!uwu')) {
-                chatbot.say(channel, 'OwO Counter: ' + counter);
+                if ((message.startsWith('!owo reset') || message.startsWith('!uwu reset')) && user == channel) {
+                    resetCounter(channel);
+                    io.emit('counter-' + channel, 0, data.lifetime);
+                    chatbot.say(channel, 'OwO Counter has been reset!');
+                } else {
+                    chatbot.say(channel, 'OwO Counter: ' + data.counter);
+                }
             } else {
                 while ((match = regex.exec(message))) {
                     matches.push(match.index);
                 }
                 if (matches.length > 0) {
-                    counter += matches.length;
-                    log.debug(`${chalk.italic(`${chalk.gray(`(${channelRaw})`)}`)} Message from ${user} contains ${matches.length} OwOs. New count: ${counter}`);
-                    io.emit('counter-' + channel, counter);
-                    let refreshedData = {
-                        counter: counter,
-                        lastMilestone: lastMilestone
+                    data.counter += matches.length;
+                    data.lifetime += matches.length;
+                    log.debug(`${chalk.italic(`${chalk.gray(`(${channelRaw})`)}`)} Message from ${user} contains ${matches.length} OwOs. New count: ${data.counter}`);
+                    io.emit('counter-' + channel, data.counter, data.lifetime);
+                    putData(channel, 'counter', data.counter);
+                    putData(channel, 'lifetime', data.lifetime);
+                    if (data.counter > data.hiScore) {
+                        data.hiScore = data.counter;
+                        putData(channel, 'hiScore', data.hiScore);
                     }
-                    channelData.set(channel, refreshedData);
-                }
-                let responseMilestone = 0;
+                    let responseMilestone = 0;
 
-                config.milestones.forEach(milestone => {
-                    if (counter >= milestone && counter > lastMilestone) {
-                        responseMilestone = milestone;
+                    config.milestones.forEach(milestone => {
+                        if (data.counter >= milestone && data.counter > data.lastMilestone) {
+                            responseMilestone = milestone;
+                        }
+                    });
+                    if (responseMilestone > 0 && responseMilestone > data.lastMilestone) {
+                        data.lastMilestone = responseMilestone;
+                        putData(channel, 'lastMilestone', data.lastMilestone);
+                        channelData.set(channel, data);
+                        io.emit('milestone-' + channel, responseMilestone, data.counter);
+                        chatbot.say(channel, 'We have reached ' + responseMilestone + ' OwOs!');
                     }
-                });
-                if (responseMilestone > 0 && responseMilestone > lastMilestone) {
-                    let refreshedData = {
-                        counter: counter,
-                        lastMilestone: responseMilestone
-                    }
-                    channelData.set(channel, refreshedData);
-                    io.emit('milestone-' + channel, responseMilestone, counter);
-                    chatbot.say(channel, 'We have reached ' + responseMilestone + ' OwOs!');
+                    channelData.set(channel, data);
                 }
             }
         }
@@ -84,16 +94,24 @@ async function main() {
 
 main().then(() => {
     io.emit('refresh');
+    db.prepare('create table if not exists channels (name text, counter int, lastMilestone int, hiScore int, lifetime int);').run();
     config.channels.forEach(channel => {
-        channelData.set(channel, {
-            counter: 0,
-            lastMilestone: 0
-        });
+        let data = getData(channel);
+        if (data === undefined) {
+            data = {
+                counter: 0,
+                lastMilestone: 0,
+                hiScore: 0,
+                lifetime: 0
+            }
+            newData(channel);
+        }
+        channelData.set(channel, data);
         app.get('/' + channel, function (req, res) {
             res.sendFile(__dirname + '/public/index.html');
         });
         io.on('connection', (socket => {
-            socket.emit('counter-' + channel, channelData.get(channel).counter);
+            socket.emit('counter-' + channel, channelData.get(channel).counter, channelData.get(channel).lifetime);
         }));
         //chatbot.say(channel, 'Hewwo! OwO/UwU counter is now active! Summon me with !owo or !uwu.');
     });
@@ -102,3 +120,28 @@ main().then(() => {
 app.use(express.static('public/'));
 
 http.listen(8080);
+
+function newData(channel) {
+    const statement = db.prepare('insert into channels (name, counter, lastMilestone, hiScore, lifetime) values (?, 0, 0, 0, 0);');
+    statement.run(channel);
+}
+
+function getData(channel) {
+    const statement = db.prepare('select * from channels where name = ?');
+    return statement.get(channel);
+}
+
+function putData(channel, property, value) {
+    const statement = db.prepare(`update channels set ${property} = ? where name = ?`);
+    statement.run(value, channel);
+}
+
+function resetCounter(channel) {
+    let data = channelData.get(channel);
+    data.counter = 0;
+    data.lastMilestone = 0;
+    channelData.set(channel, data);
+    putData(channel, 'counter', 0);
+    putData(channel, 'lastMilestone', 0);
+    log.info(`${chalk.italic(`${chalk.gray(`(#${channel})`)}`)} Counter reset`);
+}

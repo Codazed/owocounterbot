@@ -1,5 +1,6 @@
 const socket = io.connect(window.location.host);
 const counter = document.getElementById('counter');
+const lifetimeCounter = document.getElementById('lifetime');
 const milestoneText = document.getElementById('milestone');
 const milestoneNum = document.getElementById('milestonenum');
 const channel = window.location.pathname.substr(1);
@@ -8,22 +9,23 @@ socket.on('refresh', () => {
     window.location.reload(true);
 });
 
-socket.on('counter-' + channel, async (count) => {
-    await animateCSS(counter, 'flipOutX');
+socket.on('counter-' + channel, async (count, lifetime) => {
+    await Promise.all([animateCSS(counter, 'flipOutX'), animateCSS(lifetimeCounter, 'flipOutX')]);
     counter.innerHTML = count;
-    await animateCSS(counter, 'flipInX');
+    lifetimeCounter.innerHTML = lifetime;
+    await Promise.all([animateCSS(counter, 'flipInX'), animateCSS(lifetimeCounter, 'flipInX')]);
 });
 
 socket.on('milestone-' + channel, async (milestone, count) => {
     milestoneNum.innerHTML = milestone;
-    milestoneText.style.opacity = '1';
+    milestoneText.style.display = 'inline-block';
     const audio = new Audio('/milestone.ogg');
     audio.play();
-    await animateCSS(milestoneText, 'fadeInDown');
+    await animateCSS(milestoneText, 'fadeInRight');
     await animateCSS(milestoneNum, 'heartBeat');
     await later(1000);
-    await animateCSS(milestoneText, 'fadeOutUp');
-    milestoneText.style.opacity = '0';
+    await animateCSS(milestoneText, 'fadeOutLeft');
+    milestoneText.style.display = 'none';
 })
 
 const animateCSS = (element, animation, prefix = 'animate__') =>
