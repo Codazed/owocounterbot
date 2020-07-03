@@ -50,7 +50,8 @@ async function main() {
             if (message.startsWith('!owo') || message.startsWith('!uwu')) {
                 if ((message.startsWith('!owo reset') || message.startsWith('!uwu reset')) && user == channel) {
                     resetCounter(channel);
-                    io.emit('counter-' + channel, 0, data.lifetime);
+                    //io.emit('counter-' + channel, 0, data.lifetime);
+                    io.emit('reset-' + channel);
                     chatbot.say(channel, 'OwO Counter has been reset!');
                 } else {
                     chatbot.say(channel, 'OwO Counter: ' + data.counter);
@@ -69,6 +70,7 @@ async function main() {
                     if (data.counter > data.hiScore) {
                         data.hiScore = data.counter;
                         putData(channel, 'hiScore', data.hiScore);
+                        io.emit('hiscore-' + channel, data.counter);
                     }
                     let responseMilestone = 0;
 
@@ -112,6 +114,7 @@ main().then(() => {
         });
         io.on('connection', (socket => {
             socket.emit('counter-' + channel, channelData.get(channel).counter, channelData.get(channel).lifetime);
+            socket.emit('hiscore-' + channel, channelData.get(channel).hiScore, false);
         }));
         //chatbot.say(channel, 'Hewwo! OwO/UwU counter is now active! Summon me with !owo or !uwu.');
     });
